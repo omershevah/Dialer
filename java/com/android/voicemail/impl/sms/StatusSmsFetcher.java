@@ -53,8 +53,8 @@ public class StatusSmsFetcher extends BroadcastReceiver implements Closeable {
 
   private static final long STATUS_SMS_TIMEOUT_MILLIS = 60_000;
 
-  private static final String PERMISSION_DIALER_ORIGIN =
-      "com.android.dialer.permission.DIALER_ORIGIN";
+  /** Declared in the app manifest; prefixed with the package so a renamed build can coexist. */
+  private static final String PERMISSION_DIALER_ORIGIN_SUFFIX = ".permission.DIALER_ORIGIN";
 
   private static final String ACTION_REQUEST_SENT_INTENT =
       "com.android.voicemailomtp.sms.REQUEST_SENT";
@@ -71,7 +71,11 @@ public class StatusSmsFetcher extends BroadcastReceiver implements Closeable {
     this.phoneAccountHandle = phoneAccountHandle;
     IntentFilter filter = new IntentFilter(ACTION_REQUEST_SENT_INTENT);
     filter.addAction(OmtpService.ACTION_SMS_RECEIVED);
-    context.registerReceiver(this, filter, PERMISSION_DIALER_ORIGIN, /* scheduler= */ null);
+    context.registerReceiver(
+        this,
+        filter,
+        context.getPackageName() + PERMISSION_DIALER_ORIGIN_SUFFIX,
+        /* scheduler= */ null);
   }
 
   @Override
