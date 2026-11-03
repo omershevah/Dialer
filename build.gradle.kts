@@ -124,6 +124,17 @@ android {
         abortOnError = false
         checkReleaseBuilds = false
     }
+
+    packaging {
+        resources {
+            // Metadata files that several Maven jars (mime4j, gRPC) each carry.
+            excludes += setOf(
+                "META-INF/DEPENDENCIES",
+                "META-INF/INDEX.LIST",
+                "META-INF/io.netty.versions.properties",
+            )
+        }
+    }
 }
 
 kotlin {
