@@ -5,6 +5,7 @@
 // time rather than copied here.
 
 import dialer.build.AndroidBp
+import dialer.build.GenerateConstantsImplTask
 import dialer.build.GenerateExtraRClassesTask
 import dialer.build.MergeAdditionalManifestsTask
 import dialer.build.MergeOverlayResourcesTask
@@ -18,6 +19,25 @@ plugins {
 
 val bp = AndroidBp.parse(file("Android.bp"))
 val appNamespace = "com.android.dialer"
+
+// --- Application ID ---------------------------------------------------------------------------
+// The platform Dialer is com.android.dialer, signed with the platform key, so a Gradle build with
+// that ID can't be installed on a device that already has it. By default this build uses its own
+// ID, renames the content providers and permission that must be unique, and gets its own label,
+// so it installs next to the system Dialer. Build with -Pdialer.applicationId=com.android.dialer
+// to keep the platform identity.
+val dialerApplicationId =
+    providers.gradleProperty("dialer.applicationId").orNull ?: "dev.omershevah.dialer"
+val isPlatformIdentity = dialerApplicationId == appNamespace
+val dialerLabel = providers.gradleProperty("dialer.label").orNull ?: "Phone Dev"
+
+// --- Release signing --------------------------------------------------------------------------
+// Set DIALER_KEYSTORE_FILE, DIALER_KEYSTORE_PASSWORD and DIALER_KEY_ALIAS (environment or
+// -P properties) to sign release builds with your key. Without them, release builds use the
+// debug key. Keep the key: Android only installs an update signed with the same key.
+fun signingValue(name: String): String? =
+    providers.gradleProperty(name).orNull ?: providers.environmentVariable(name).orNull
+val releaseKeystore = signingValue("DIALER_KEYSTORE_FILE")?.let { file(it) }?.takeIf { it.isFile }
 
 // --- Framework classes ------------------------------------------------------------------------
 // Soong compiles against sdk_version "system_current", and GrapheneOS changes also use hidden
@@ -56,6 +76,8 @@ val mergeDialerManifests =
         )
         outputManifest.set(layout.buildDirectory.file("generated/dialer/manifest/AndroidManifest.xml"))
         workDir.set(layout.buildDirectory.dir("tmp/mergeDialerManifests"))
+        renameUniqueNames.set(!isPlatformIdentity)
+        if (!isPlatformIdentity) launcherLabel.set(dialerLabel)
     }
 tasks.named("preBuild") { dependsOn(mergeDialerManifests) }
 
@@ -72,7 +94,7 @@ android {
     compileSdk = 36
 
     defaultConfig {
-        applicationId = appNamespace
+        applicationId = dialerApplicationId
         minSdk = 24
         targetSdk = 30
         versionCode = 2900000
@@ -103,6 +125,10 @@ android {
             "com/google/android/libraries/backup/**/*.java",
         )
         java.exclude(bp.sourceExcludes.map { it.removePrefix("java/") })
+        if (!isPlatformIdentity) {
+            // Replaced by generateConstantsImpl (authorities that follow the application ID).
+            java.exclude("com/android/dialer/constants/aospdialer/ConstantsImpl.java")
+        }
         aidl.setSrcDirs(listOf("java"))
         // Resources come from mergeDialerResources (registered per variant below).
         res.setSrcDirs(emptyList<String>())
@@ -112,11 +138,21 @@ android {
         }
     }
 
+    signingConfigs {
+        if (releaseKeystore != null) {
+            create("release") {
+                storeFile = releaseKeystore
+                storePassword = signingValue("DIALER_KEYSTORE_PASSWORD")
+                keyAlias = signingValue("DIALER_KEY_ALIAS") ?: "dialer"
+                keyPassword = signingValue("DIALER_KEY_PASSWORD") ?: storePassword
+            }
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false
-            // Debug key so the release APK installs for testing; replace for real releases.
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.findByName("release") ?: signingConfigs.getByName("debug")
         }
     }
 
@@ -161,11 +197,20 @@ androidComponents {
                     layout.buildDirectory.dir("intermediates/runtime_symbol_list/${variant.name}")
                 )
                 namespace.set(appNamespace)
-                packages.set(bp.extraPackages)
+                // Library packages (me.leolin.shortcutbadger) already get an R class from AGP.
+                packages.set(bp.extraPackages.filter { it.startsWith("com.android.") })
                 kotlinSources.from(fileTree("java") { include("**/*.kt") })
                 dependsOn("process${cap}Resources")
             }
         variant.sources.java?.addGeneratedSourceDirectory(extraR, GenerateExtraRClassesTask::outputDir)
+
+        if (!isPlatformIdentity) {
+            val constants =
+                tasks.register<GenerateConstantsImplTask>("generate${cap}ConstantsImpl") {
+                    applicationId.set(variant.applicationId)
+                }
+            variant.sources.java?.addGeneratedSourceDirectory(constants, GenerateConstantsImplTask::outputDir)
+        }
     }
 }
 

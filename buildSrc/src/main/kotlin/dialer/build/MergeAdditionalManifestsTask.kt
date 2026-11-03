@@ -10,7 +10,10 @@ import org.gradle.api.file.ConfigurableFileCollection
 import org.gradle.api.file.DirectoryProperty
 import org.gradle.api.file.RegularFileProperty
 import org.gradle.api.tasks.CacheableTask
+import org.gradle.api.provider.Property
+import org.gradle.api.tasks.Input
 import org.gradle.api.tasks.InputFile
+import org.gradle.api.tasks.Optional
 import org.gradle.api.tasks.InputFiles
 import org.gradle.api.tasks.OutputFile
 import org.gradle.api.tasks.PathSensitive
@@ -26,6 +29,11 @@ import org.w3c.dom.Element
  * AGP accepts a single main manifest per source set, so the result of this task becomes the main
  * manifest. Settings that AGP takes from the DSL (`package`, versions, `<uses-sdk>`) are removed
  * from the result.
+ *
+ * With [renameUniqueNames], content provider authorities and permissions the app defines are
+ * moved from `com.android.dialer.` to `${applicationId}.`, so a build with another application
+ * ID can be installed next to the system Dialer. [launcherLabel] replaces the app and launcher
+ * labels so the two can be told apart.
  */
 @CacheableTask
 abstract class MergeAdditionalManifestsTask : DefaultTask() {
@@ -37,6 +45,13 @@ abstract class MergeAdditionalManifestsTask : DefaultTask() {
     @get:InputFiles
     @get:PathSensitive(PathSensitivity.RELATIVE)
     abstract val additionalManifests: ConfigurableFileCollection
+
+    @get:Input
+    abstract val renameUniqueNames: Property<Boolean>
+
+    @get:Input
+    @get:Optional
+    abstract val launcherLabel: Property<String>
 
     @get:OutputFile
     abstract val outputManifest: RegularFileProperty
@@ -91,9 +106,60 @@ abstract class MergeAdditionalManifestsTask : DefaultTask() {
         root.removeAttributeNS(ANDROID_NS, "versionCode")
         root.removeAttributeNS(ANDROID_NS, "versionName")
         removeUsesSdk(root)
+        if (renameUniqueNames.get()) renameUniqueNames(root)
+        launcherLabel.orNull?.let { setLauncherLabel(root, it) }
 
         Xml.write(merged, outputManifest.get().asFile)
     }
+
+    private fun renameUniqueNames(manifest: Element) {
+        val prefix = "com.android.dialer."
+        val renamed = "\${applicationId}."
+        fun rename(value: String) = if (value.startsWith(prefix)) renamed + value.removePrefix(prefix) else value
+
+        val elements = descendants(manifest)
+        val definedPermissions =
+            elements.filter { it.tagName == "permission" }.map { it.getAttributeNS(ANDROID_NS, "name") }.toSet()
+
+        for (element in elements) {
+            if (element.tagName == "provider" && element.hasAttributeNS(ANDROID_NS, "authorities")) {
+                val authorities = element.getAttributeNS(ANDROID_NS, "authorities")
+                element.setAttributeNS(
+                    ANDROID_NS,
+                    "android:authorities",
+                    authorities.split(';').joinToString(";") { rename(it) },
+                )
+            }
+            val permissionAttributes =
+                when (element.tagName) {
+                    "permission", "uses-permission" -> listOf("name")
+                    else -> listOf("permission", "readPermission", "writePermission")
+                }
+            for (attribute in permissionAttributes) {
+                val value = element.getAttributeNS(ANDROID_NS, attribute)
+                if (value in definedPermissions) {
+                    element.setAttributeNS(ANDROID_NS, "android:$attribute", rename(value))
+                }
+            }
+        }
+    }
+
+    private fun setLauncherLabel(manifest: Element, label: String) {
+        for (element in descendants(manifest)) {
+            val isLauncher =
+                (element.tagName == "activity" || element.tagName == "activity-alias") &&
+                    descendants(element).any {
+                        it.tagName == "category" &&
+                            it.getAttributeNS(ANDROID_NS, "name") == "android.intent.category.LAUNCHER"
+                    }
+            if (element.tagName == "application" || isLauncher) {
+                element.setAttributeNS(ANDROID_NS, "android:label", label)
+            }
+        }
+    }
+
+    private fun descendants(element: Element): List<Element> =
+        element.childElements().flatMap { listOf(it) + descendants(it) }
 
     private fun removeUsesSdk(manifest: Element) {
         manifest.childElements().filter { it.tagName == "uses-sdk" }.forEach { manifest.removeChild(it) }

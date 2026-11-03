@@ -5,11 +5,11 @@ The Dialer is part of the GrapheneOS platform and is normally built by Soong fro
 without a full GrapheneOS source tree.
 
 ```
-./gradlew assembleDebug
+./gradlew assembleRelease
 ```
 
-The APK is written to `build/outputs/apk/debug/Dialer-debug.apk`. Every push also builds it on
-GitHub Actions (workflow **Build APK**, artifact **Dialer-debug**).
+The APK is written to `build/outputs/apk/release/Dialer-release.apk`. Every push also builds it
+on GitHub Actions (workflow **Build APK**, artifact **Dialer**).
 
 ## Requirements
 
@@ -40,10 +40,36 @@ Platform libraries that are not published to Maven live in `third_party/`:
 
 The remaining `static_libs` and `plugins` map to Maven artifacts in `build.gradle.kts`.
 
-## Installing the APK
+## Application ID and installing
 
-The Gradle build keeps the package name `com.android.dialer` and is signed with the Gradle
-debug key, not the platform `shared` key. On a device where Dialer is already a system app
-(including GrapheneOS), it can't be installed as an update of the system Dialer. Install it on
-an emulator or a device without that system app, or sign it with the matching platform key.
-Privileged permissions are only granted to the app when it is installed in the system image.
+By default the Gradle build is `dev.omershevah.dialer`, labelled **Phone Dev**, so it installs
+next to the system Dialer (`com.android.dialer`, signed with the platform key). To make that
+possible the build also:
+
+- renames the content provider authorities and the `DIALER_ORIGIN` permission from
+  `com.android.dialer.*` to the new ID (in the merged manifest, and through a generated
+  `ConstantsImpl` that replaces `constants/aospdialer/ConstantsImpl.java`);
+- sets the app and launcher label.
+
+`-Pdialer.applicationId=...` and `-Pdialer.label=...` change these. With
+`-Pdialer.applicationId=com.android.dialer` none of it happens and the build keeps the platform
+identity.
+
+After installing, choose it under **Settings → Apps → Default apps → Phone app**. It runs as a
+regular app, so permissions that Android only grants to privileged system apps are not
+available, and features that depend on them may not work.
+
+## Signing
+
+Release builds are signed with the key given by `DIALER_KEYSTORE_FILE`, `DIALER_KEYSTORE_PASSWORD`
+and `DIALER_KEY_ALIAS` (environment variables or `-P` properties). Without them they are signed
+with the debug key.
+
+On GitHub Actions the key comes from two repository secrets (**Settings → Secrets and variables →
+Actions**):
+
+- `DIALER_KEYSTORE_BASE64`: the keystore file, base64-encoded.
+- `DIALER_KEYSTORE_PASSWORD`: the keystore and key password. The key alias is `dialer`.
+
+Android only installs an update signed with the same key as the installed app, so keep a backup of
+the keystore. A new key means uninstalling the app (and its data) first.
