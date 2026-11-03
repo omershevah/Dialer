@@ -41,9 +41,9 @@ data class AndroidBp(
             return AndroidBp(
                 resourceDirs = listAssignment("RES_DIRS"),
                 extraPackages =
-                    listAssignment("EXTRA_PACKAGE_FLAGS").map {
-                        it.removePrefix("--extra-packages").trim()
-                    },
+                    listAssignment("EXTRA_PACKAGE_FLAGS")
+                        .filter { it.startsWith("--extra-packages ") }
+                        .map { it.removePrefix("--extra-packages ").trim() },
                 sourceExcludes = listInModule("Dialer_app_defaults", "exclude_srcs"),
                 manifestExcludes = listInModule("dialer_manifests", "exclude_srcs"),
             )
