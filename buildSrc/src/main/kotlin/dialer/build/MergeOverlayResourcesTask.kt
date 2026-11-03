@@ -56,6 +56,9 @@ abstract class MergeOverlayResourcesTask : DefaultTask() {
                         if (!file.name.endsWith(".xml")) continue
                         for (element in Xml.parse(file).documentElement.childElements()) {
                             keyOf(qualifier, element)?.let { valueWinner[it] = index }
+                            for (attr in nestedAttrDefinitions(element)) {
+                                valueWinner[ValueKey(qualifier, "attr", attr.getAttribute("name"))] = index
+                            }
                         }
                     } else {
                         fileWinner[FileKey(qualifier, file.name.substringBefore('.'))] = file
@@ -80,8 +83,21 @@ abstract class MergeOverlayResourcesTask : DefaultTask() {
                             val key = keyOf(qualifier, element)
                             key != null && valueWinner[key] != index
                         }
+                    // An attr defined inside a styleable and again elsewhere: keep the winning
+                    // definition and turn the others into plain references.
+                    var demoted = false
+                    for (element in root.childElements() - overridden.toSet()) {
+                        for (attr in nestedAttrDefinitions(element)) {
+                            val key = ValueKey(qualifier, "attr", attr.getAttribute("name"))
+                            if (valueWinner[key] != index) {
+                                attr.removeAttribute("format")
+                                while (attr.hasChildNodes()) attr.removeChild(attr.firstChild)
+                                demoted = true
+                            }
+                        }
+                    }
                     when {
-                        overridden.isEmpty() -> {
+                        overridden.isEmpty() && !demoted -> {
                             target.parentFile.mkdirs()
                             file.copyTo(target, overwrite = true)
                         }
@@ -95,6 +111,18 @@ abstract class MergeOverlayResourcesTask : DefaultTask() {
             }
         }
     }
+
+    /** `<attr>` children of a `<declare-styleable>` that define the attr rather than reference it. */
+    private fun nestedAttrDefinitions(element: Element): List<Element> =
+        if (element.tagName != "declare-styleable") {
+            emptyList()
+        } else {
+            element.childElements().filter { attr ->
+                attr.tagName == "attr" &&
+                    !attr.getAttribute("name").startsWith("android:") &&
+                    (attr.hasAttribute("format") || attr.childElements().isNotEmpty())
+            }
+        }
 
     private fun subdirs(dir: File): List<File> =
         dir.listFiles().orEmpty().filter { it.isDirectory }.sortedBy { it.name }
