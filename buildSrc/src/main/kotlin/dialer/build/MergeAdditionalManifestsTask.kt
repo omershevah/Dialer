@@ -74,7 +74,11 @@ abstract class MergeAdditionalManifestsTask : DefaultTask() {
             throw IllegalStateException("Merging the Dialer sub-manifests failed:\n$log")
         }
 
-        val merged = Xml.parse(report.getMergedDocument(MergingReport.MergedManifestKind.MERGED))
+        val merged =
+            Xml.parse(
+                report.getMergedDocument(MergingReport.MergedManifestKind.MERGED)
+                    ?: error("Manifest merger produced no document")
+            )
         val root = merged.documentElement
         root.removeAttribute("package")
         root.removeAttributeNS(ANDROID_NS, "versionCode")
