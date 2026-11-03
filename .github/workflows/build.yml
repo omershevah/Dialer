@@ -1,0 +1,51 @@
+name: Build APK
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: android-actions/setup-android@v3
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Build debug APK
+        run: ./gradlew assembleDebug --stacktrace --console=plain 2>&1 | tee build.log; exit ${PIPESTATUS[0]}
+
+      # Surface compiler errors as annotations so they show up on the commit's checks.
+      - name: Report build errors
+        if: failure()
+        run: |
+          grep -E '(^e: |: error: |^ERROR:|FAILURE:|What went wrong|^> |Could not )' build.log \
+            | grep -v '^> Task' | head -50 > errors.txt || true
+          sed -n '1,10p' errors.txt | sed 's/%/%25/g' | while IFS= read -r line; do echo "::error::$line"; done
+          sed -n '11,20p' errors.txt | sed 's/%/%25/g' | while IFS= read -r line; do echo "::warning::$line"; done
+          sed -n '21,30p' errors.txt | sed 's/%/%25/g' | while IFS= read -r line; do echo "::notice::$line"; done
+          { echo '```'; cat errors.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: build-log
+          path: build.log
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Dialer-debug
+          path: build/outputs/apk/debug/*.apk
