@@ -29,6 +29,33 @@ jobs:
       - name: Build debug APK
         run: ./gradlew assembleDebug --stacktrace --console=plain 2>&1 | tee build.log; exit ${PIPESTATUS[0]}
 
+      # Fails if the APK is missing what the platform build would put in it.
+      - name: Verify APK
+        run: |
+          APK=build/outputs/apk/debug/Dialer-debug.apk
+          BT=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
+          ls -l "$APK"
+          "$BT/aapt2" dump badging "$APK" | grep -E '^(package|sdkVersion|targetSdkVersion|application:|launchable-activity)'
+          "$BT/aapt2" dump xmltree --file AndroidManifest.xml "$APK" > manifest.txt
+          for tag in activity service receiver provider uses-permission; do
+            echo "$tag: $(grep -c "E: $tag " manifest.txt)"
+          done
+          missing=0
+          for name in com.android.dialer.main.impl.MainActivity com.android.incallui.InCallActivity \
+                      com.android.incallui.InCallServiceImpl com.android.dialer.binary.aosp.AospDialerApplication; do
+            grep -q "\"$name\"" manifest.txt || { echo "::error::manifest is missing $name"; missing=1; }
+          done
+          unzip -o -q "$APK" 'classes*.dex' -d dex
+          echo "dex files: $(ls dex | wc -l)"
+          for cls in com/android/dialer/binary/aosp/DaggerAospDialerRootComponent \
+                     com/bumptech/glide/GeneratedAppGlideModuleImpl \
+                     com/android/dialer/app/R\$string com/android/incallui/R\$layout \
+                     com/android/dialer/callrecord/CallRecordingPreferences \
+                     com/google/android/libraries/backup/PersistentBackupAgentHelper; do
+            cat dex/*.dex | grep -aq "L$cls;" || { echo "::error::APK is missing class $cls"; missing=1; }
+          done
+          exit $missing
+
       # Surface compiler errors as annotations so they show up on the commit's checks.
       - name: Report build errors
         if: failure()
