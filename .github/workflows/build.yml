@@ -31,13 +31,30 @@ jobs:
       - name: Set up signing key
         env:
           KEYSTORE_BASE64: ${{ secrets.DIALER_KEYSTORE_BASE64 }}
+          DIALER_KEYSTORE_PASSWORD: ${{ secrets.DIALER_KEYSTORE_PASSWORD }}
         run: |
-          if [ -n "$KEYSTORE_BASE64" ]; then
-            echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/dialer.jks"
-            echo "DIALER_KEYSTORE_FILE=$RUNNER_TEMP/dialer.jks" >> "$GITHUB_ENV"
-          else
+          if [ -z "$KEYSTORE_BASE64" ]; then
             echo "::warning::DIALER_KEYSTORE_BASE64 is not set; the APK is signed with a debug key"
+            exit 0
           fi
+          # Copying a long value often adds line breaks or spaces; base64 has none.
+          clean=$(printf '%s' "$KEYSTORE_BASE64" | tr -d '[:space:]')
+          echo "DIALER_KEYSTORE_BASE64: ${#clean} characters after removing whitespace"
+          bad=$(printf '%s' "$clean" | tr -d 'A-Za-z0-9+/=' | wc -c)
+          if [ "$bad" -ne 0 ]; then
+            echo "::error::DIALER_KEYSTORE_BASE64 contains $bad characters that are not base64. Paste only the long encoded line, with nothing before or after it."
+            exit 1
+          fi
+          if ! printf '%s' "$clean" | base64 -d > "$RUNNER_TEMP/dialer.jks" 2>/dev/null; then
+            echo "::error::DIALER_KEYSTORE_BASE64 is incomplete (${#clean} characters). Paste the whole line again."
+            exit 1
+          fi
+          if ! keytool -list -keystore "$RUNNER_TEMP/dialer.jks" -storepass "$DIALER_KEYSTORE_PASSWORD" -alias dialer > /dev/null 2>&1; then
+            echo "::error::The keystore could not be opened. Check DIALER_KEYSTORE_PASSWORD, and that DIALER_KEYSTORE_BASE64 is the complete value."
+            exit 1
+          fi
+          keytool -list -v -keystore "$RUNNER_TEMP/dialer.jks" -storepass "$DIALER_KEYSTORE_PASSWORD" -alias dialer | grep 'SHA256:'
+          echo "DIALER_KEYSTORE_FILE=$RUNNER_TEMP/dialer.jks" >> "$GITHUB_ENV"
 
       - name: Build release APK
         env:
