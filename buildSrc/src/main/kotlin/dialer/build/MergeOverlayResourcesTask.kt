@@ -69,7 +69,7 @@ abstract class MergeOverlayResourcesTask : DefaultTask() {
 
         // Pass 2: write files, dropping definitions that a later directory overrides.
         for (file in fileWinner.values) {
-            file.copyTo(File(out, "${file.parentFile.name}/${file.name}"), overwrite = true)
+            file.copyTo(File(out, "${targetQualifier(file)}/${file.name}"), overwrite = true)
         }
         dirs.forEachIndexed { index, dir ->
             for (qualifierDir in subdirs(dir).filter { isValues(it.name) }) {
@@ -110,6 +110,17 @@ abstract class MergeOverlayResourcesTask : DefaultTask() {
                 }
             }
         }
+    }
+
+    /**
+     * aapt2 versions an `<adaptive-icon>` in an unversioned folder to API 26 on its own; AGP's
+     * resource merger rejects it instead, so add the qualifier here.
+     */
+    private fun targetQualifier(file: File): String {
+        val qualifier = file.parentFile.name
+        if (!file.name.endsWith(".xml") || Regex("-v\\d+$").containsMatchIn(qualifier)) return qualifier
+        val root = Xml.parse(file).documentElement.tagName
+        return if (root == "adaptive-icon") "$qualifier-v26" else qualifier
     }
 
     /** `<attr>` children of a `<declare-styleable>` that define the attr rather than reference it. */
