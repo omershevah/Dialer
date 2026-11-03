@@ -1,5 +1,10 @@
 # Dialer
 
+## Building
+
+The app is built by Soong as part of the platform. To build it on its own with Gradle, see
+[BUILDING.md](BUILDING.md).
+
 ## Tests
 
 ```

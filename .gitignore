@@ -1,0 +1,11 @@
+# Standalone Gradle build
+/build/
+/buildSrc/build/
+/buildSrc/.gradle/
+/gradle/rootcomponentprocessor/build/
+/.gradle/
+/.kotlin/
+/buildSrc/.kotlin/
+/local.properties
+*.iml
+/.idea/
