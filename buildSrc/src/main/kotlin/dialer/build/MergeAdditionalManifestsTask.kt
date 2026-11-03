@@ -52,17 +52,24 @@ abstract class MergeAdditionalManifestsTask : DefaultTask() {
         }
 
         // Sub-manifests use names relative to their own package. Qualify them first so the
-        // result does not depend on how the merger resolves names inside libraries.
+        // result does not depend on how the merger resolves names inside libraries. <uses-sdk>
+        // comes from the Gradle DSL; the merger rejects it in manifests.
         val libraries =
             additionalManifests.files.sortedBy { it.path }.mapIndexed { i, manifest ->
                 val doc = Xml.parse(manifest)
                 qualifyComponentNames(doc.documentElement)
+                removeUsesSdk(doc.documentElement)
                 File(work, "$i/AndroidManifest.xml").also { Xml.write(doc, it) }
+            }
+        val main =
+            Xml.parse(mainManifest.get().asFile).let { doc ->
+                removeUsesSdk(doc.documentElement)
+                File(work, "main/AndroidManifest.xml").also { Xml.write(doc, it) }
             }
 
         val invoker =
             ManifestMerger2.newMerger(
-                mainManifest.get().asFile,
+                main,
                 StdLogger(StdLogger.Level.WARNING),
                 ManifestMerger2.MergeType.APPLICATION,
             )
@@ -83,9 +90,13 @@ abstract class MergeAdditionalManifestsTask : DefaultTask() {
         root.removeAttribute("package")
         root.removeAttributeNS(ANDROID_NS, "versionCode")
         root.removeAttributeNS(ANDROID_NS, "versionName")
-        root.childElements().filter { it.tagName == "uses-sdk" }.forEach { root.removeChild(it) }
+        removeUsesSdk(root)
 
         Xml.write(merged, outputManifest.get().asFile)
+    }
+
+    private fun removeUsesSdk(manifest: Element) {
+        manifest.childElements().filter { it.tagName == "uses-sdk" }.forEach { manifest.removeChild(it) }
     }
 
     private fun qualifyComponentNames(manifest: Element) {
