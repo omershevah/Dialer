@@ -41,7 +41,7 @@ dependencies {
     implementation("com.google.auto:auto-common:0.10")
     implementation("com.google.guava:guava:33.3.1-jre")
     implementation("com.squareup:javapoet:1.13.0")
-    implementation("com.google.dagger:dagger:2.48.1")
+    implementation("com.google.dagger:dagger:2.57")
     implementation("javax.inject:javax.inject:1")
     compileOnly("com.google.auto.service:auto-service-annotations:1.1.1")
     compileOnly("com.google.errorprone:error_prone_annotations:2.28.0")

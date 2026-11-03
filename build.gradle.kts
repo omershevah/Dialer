@@ -200,7 +200,7 @@ dependencies {
 
     // dialer-common-m2-target-deps, dialer-glide-target-deps and friends
     implementation("com.google.guava:guava:33.3.1-android")
-    implementation("com.google.dagger:dagger:2.48.1")
+    implementation("com.google.dagger:dagger:2.57")
     implementation("javax.inject:javax.inject:1")
     implementation("com.github.bumptech.glide:glide:4.8.0") // last release on the support library
     implementation("com.google.protobuf:protobuf-javalite:3.25.5")
@@ -225,10 +225,11 @@ dependencies {
     implementation("com.google.code.findbugs:jsr305:3.0.2")
     implementation("com.google.errorprone:error_prone_annotations:2.28.0")
     compileOnly("com.google.auto.value:auto-value-annotations:1.10.4")
+    compileOnly("javax.annotation:jsr250-api:1.0") // @javax.annotation.Generated in the gRPC stub
 
     // plugins: (annotation processors)
     annotationProcessor("com.google.auto.value:auto-value:1.10.4")
-    annotationProcessor("com.google.dagger:dagger-compiler:2.48.1")
+    annotationProcessor("com.google.dagger:dagger-compiler:2.57")
     annotationProcessor("com.github.bumptech.glide:compiler:4.8.0")
     annotationProcessor(project(":rootcomponentprocessor"))
 }
