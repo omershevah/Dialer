@@ -197,7 +197,8 @@ androidComponents {
                     layout.buildDirectory.dir("intermediates/runtime_symbol_list/${variant.name}")
                 )
                 namespace.set(appNamespace)
-                packages.set(bp.extraPackages)
+                // Library packages (me.leolin.shortcutbadger) already get an R class from AGP.
+                packages.set(bp.extraPackages.filter { it.startsWith("com.android.") })
                 kotlinSources.from(fileTree("java") { include("**/*.kt") })
                 dependsOn("process${cap}Resources")
             }
